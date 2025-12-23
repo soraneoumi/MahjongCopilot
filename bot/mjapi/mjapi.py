@@ -74,6 +74,17 @@ class MjapiClient:
         else:
             raise RuntimeError(f"Error login: {res_json}")
 
+    def trial_login(self, code: str) -> str:
+        """Login as temporary user.
+        POST /user/trial with body {"code": "..."}
+        Response: {"id": "<token>"}
+        """
+        path = '/user/trial'
+        res_json = self.post_req(path, json={'code': code})
+        token = res_json['id']
+        self.set_bearer_token(token)
+        return token
+
     def get_user_info(self):
         """Get current user info."""
         path = '/user'
@@ -90,18 +101,18 @@ class MjapiClient:
         """Return list of available models."""
         path = '/mjai/list'
         res_json = self.get_req(path)
-        return res_json['models']
+        return res_json['permit']
 
     def get_usage(self) -> int:
         """Get mjai query usage."""
         path = '/mjai/usage'
-        res_json = self.get_req(path, None)
+        res_json = self.get_req(path)
         return res_json['used']
 
     def get_limit(self):
         """Get mjai query limit."""
         path = '/mjai/limit'
-        res_json = self.get_req(path, None)
+        res_json = self.get_req(path)
         return res_json
 
     def start_bot(self, id, bound, model):

@@ -161,22 +161,41 @@ class SettingsWindow(tk.Toplevel):
         string_entry = ttk.Entry(main_frame, textvariable=self.mjapi_url_var, width=std_wid*4)
         string_entry.grid(row=cur_row, column=1,columnspan=3,  **args_entry)
         
+        # MJAPI auth mode + trial code
+        cur_row += 1
+        _label = ttk.Label(main_frame, text="MJAPI Auth")
+        _label.grid(row=cur_row, column=0, **args_label)
+        self.mjapi_auth_mode_var = tk.StringVar(value=self.st.mjapi_auth_mode)
+        self._mjapi_auth_combo = ttk.Combobox(
+            main_frame, textvariable=self.mjapi_auth_mode_var,
+            values=["account", "trial"], state="readonly", width=std_wid)
+        self._mjapi_auth_combo.grid(row=cur_row, column=1, **args_entry)
+        self._mjapi_auth_combo.bind("<<ComboboxSelected>>", lambda _e: self._update_mjapi_auth_ui())
+
+        _label = ttk.Label(main_frame, text="Trial Code")
+        _label.grid(row=cur_row, column=2, **args_label)
+        self.mjapi_trial_code_var = tk.StringVar(value=self.st.mjapi_trial_code)
+        self._mjapi_trial_entry = ttk.Entry(main_frame, textvariable=self.mjapi_trial_code_var, width=std_wid*2)
+        self._mjapi_trial_entry.grid(row=cur_row, column=3, **args_entry)
+
         # MJAPI user
         cur_row += 1
         _label = ttk.Label(main_frame, text=self.st.lan().MJAPI_USER)
         _label.grid(row=cur_row, column=0, **args_label)
         self.mjapi_user_var = tk.StringVar(value=self.st.mjapi_user)
-        string_entry = ttk.Entry(main_frame, textvariable=self.mjapi_user_var, width=std_wid)
-        string_entry.grid(row=cur_row, column=1, **args_entry)   
+        self._mjapi_user_entry = ttk.Entry(main_frame, textvariable=self.mjapi_user_var, width=std_wid)
+        self._mjapi_user_entry.grid(row=cur_row, column=1, **args_entry)   
         
         # MJAPI secret
         cur_row += 1
         _label = ttk.Label(main_frame, text=self.st.lan().MJAPI_SECRET)
         _label.grid(row=cur_row, column=0, **args_label)
         self.mjapi_secret_var = tk.StringVar(value=self.st.mjapi_secret)
-        string_entry = ttk.Entry(main_frame, textvariable=self.mjapi_secret_var,width=std_wid*4)
-        string_entry.grid(row=cur_row, column=1,columnspan=3,  **args_entry)
+        self._mjapi_secret_entry = ttk.Entry(main_frame, textvariable=self.mjapi_secret_var,width=std_wid*4)
+        self._mjapi_secret_entry.grid(row=cur_row, column=1,columnspan=3,  **args_entry)
         
+        self._update_mjapi_auth_ui()
+
         # MJAPI model
         cur_row += 1
         _label = ttk.Label(main_frame, text=self.st.lan().MJAPI_MODEL_SELECT)
@@ -255,6 +274,18 @@ class SettingsWindow(tk.Toplevel):
         save_button.pack(side=tk.RIGHT, padx=20, pady=20)
         
         
+    def _update_mjapi_auth_ui(self):
+        """Enable/disable MJAPI fields based on auth mode."""
+        mode = self.mjapi_auth_mode_var.get()
+        if mode == "trial":
+            self._mjapi_user_entry.configure(state="disabled")
+            self._mjapi_secret_entry.configure(state="disabled")
+            self._mjapi_trial_entry.configure(state="normal")
+        else:
+            self._mjapi_user_entry.configure(state="normal")
+            self._mjapi_secret_entry.configure(state="normal")
+            self._mjapi_trial_entry.configure(state="disabled")
+
     def _on_save(self):
         # Get values from entry fields, validate, and save them        
         # === Process and validate new values ===
@@ -296,6 +327,8 @@ class SettingsWindow(tk.Toplevel):
         mjapi_user_new = self.mjapi_user_var.get()
         mjapi_secret_new = self.mjapi_secret_var.get()
         mjapi_model_select_new = self.mjapi_model_select_var.get()        
+        mjapi_auth_mode_new = self.mjapi_auth_mode_var.get()
+        mjapi_trial_code_new = self.mjapi_trial_code_var.get()
         if (
             self.st.model_type != model_type_new or
             self.st.model_file != model_file_new or
@@ -305,7 +338,9 @@ class SettingsWindow(tk.Toplevel):
             self.st.mjapi_url != mjapi_url_new or
             self.st.mjapi_user != mjapi_user_new or
             self.st.mjapi_secret != mjapi_secret_new or 
-            self.st.mjapi_model_select != mjapi_model_select_new
+            self.st.mjapi_model_select != mjapi_model_select_new or
+            self.st.mjapi_auth_mode != mjapi_auth_mode_new or
+            self.st.mjapi_trial_code != mjapi_trial_code_new
         ):
             self.model_updated = True
         
@@ -341,6 +376,8 @@ class SettingsWindow(tk.Toplevel):
         self.st.mjapi_user = mjapi_user_new
         self.st.mjapi_secret = mjapi_secret_new
         self.st.mjapi_model_select = mjapi_model_select_new
+        self.st.mjapi_auth_mode = mjapi_auth_mode_new
+        self.st.mjapi_trial_code = mjapi_trial_code_new
         
         self.st.auto_idle_move = self.auto_idle_move_var.get()
         self.st.auto_dahai_drag = self.auto_drag_dahai_var.get()

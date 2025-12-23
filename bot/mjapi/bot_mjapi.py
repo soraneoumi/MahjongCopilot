@@ -32,19 +32,28 @@ class BotMjapi(Bot):
         return f"{self.name} [{self.st.mjapi_model_select}] (Usage: {self.api_usage})"
         
     def _login_or_reg(self):
-        if not self.st.mjapi_user:
-            self.st.mjapi_user = random_str(6)
-            LOGGER.info("Created  random mjapi username:%s", self.st.mjapi_user)        
-        if self.st.mjapi_secret:    # login
-            LOGGER.debug("Logging in with user: %s", self.st.mjapi_user)
-            self.mjapi.login(self.st.mjapi_user, self.st.mjapi_secret)
-        else:         # try register  
-            LOGGER.debug("Registering in with user: %s", self.st.mjapi_user)          
-            res_reg = self.mjapi.register(self.st.mjapi_user)
-            self.st.mjapi_secret = res_reg['secret']
+        # auth mode:
+        # - account: /user/login (optionally /user/register if secret empty)
+        # - trial:   /user/trial with body {'code': ...}
+        if getattr(self.st, 'mjapi_auth_mode', 'account') == 'trial':
+            token = self.mjapi.trial_login(self.st.mjapi_trial_code)
+            # persist token (optional, but helps if the program exits unexpectedly)
+            self.st.mjapi_token = token
             self.st.save_json()
-            LOGGER.info("Registered new user [%s] with MJAPI. User name and secret saved to settings.", self.st.mjapi_user)
-            self.mjapi.login(self.st.mjapi_user, self.st.mjapi_secret)
+        else:
+            if not self.st.mjapi_user:
+                self.st.mjapi_user = random_str(6)
+                LOGGER.info("Created  random mjapi username:%s", self.st.mjapi_user)
+            if self.st.mjapi_secret:    # login
+                LOGGER.debug("Logging in with user: %s", self.st.mjapi_user)
+                self.mjapi.login(self.st.mjapi_user, self.st.mjapi_secret)
+            else:         # try register
+                LOGGER.debug("Registering in with user: %s", self.st.mjapi_user)
+                res_reg = self.mjapi.register(self.st.mjapi_user)
+                self.st.mjapi_secret = res_reg['secret']
+                self.st.save_json()
+                LOGGER.info("Registered new user [%s] with MJAPI. User name and secret saved to settings.", self.st.mjapi_user)
+                self.mjapi.login(self.st.mjapi_user, self.st.mjapi_secret)
 
         model_list = self.mjapi.list_models()
         if not model_list:

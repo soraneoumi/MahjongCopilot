@@ -46,6 +46,14 @@ class Settings:
         self.mjapi_secret:str = self._get_value("mjapi_secret", "")
         self.mjapi_models:list = self._get_value("mjapi_models",[])
         self.mjapi_model_select:str = self._get_value("mjapi_model_select","baseline")
+        # mjai server trial login
+        # "account": use mjapi_user + mjapi_secret via /user/login
+        # "trial": use mjapi_trial_code via /user/trial
+        self.mjapi_auth_mode:str = self._get_value(
+            "mjapi_auth_mode", "account", lambda x: isinstance(x, str) and x in ("account", "trial"))
+        self.mjapi_trial_code:str = self._get_value("mjapi_trial_code", "")
+        # optional: persist trial session token to reduce risk of losing it
+        self.mjapi_token:str = self._get_value("mjapi_token", "")
         
         # Automation settings
         self.enable_automation:bool = self._get_value("enable_automation", False, self.valid_bool)
