@@ -2,6 +2,7 @@
 
 import time
 import atexit
+import json
 
 from common.settings import Settings
 from common.log_helper import LOGGER
@@ -181,15 +182,77 @@ class BotMjapi(Bot):
                 LOGGER.debug("Ignoring repetitive self reach msg, reach msg already sent to AI last turn")
                 input_list = input_list[1:]
             self.ignore_next_turn_self_reach = False
+            
         if len(input_list) == 0:
             return None
-        num_batches = (len(input_list) - 1) // BotMjapi.batch_size + 1
+
+        # Build actions with seq (keep original seq behavior)
+        actions_all: list[dict] = []
+        for msg in input_list:
+            self.id = (self.id + 1) % BotMjapi.bound
+            actions_all.append({'seq': self.id, 'data': msg})
+
+        # Split into chunks by actual JSON byte length (<= 4096)
+        MAX_BODY_BYTES = 4096
+
+        def size_bytes(chunk: list[dict]) -> int:
+            b = json.dumps(chunk, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+            return len(b)
+
+        chunks: list[list[dict]] = []
+        cur: list[dict] = []
+
+        for act in actions_all:
+            # Flush before start_kyoku so we never pack multiple start_kyoku together
+            try:
+                if act['data'].get('type') == 'start_kyoku' and len(cur) > 0:
+                    chunks.append(cur)
+                    cur = []
+            except Exception:
+                pass
+
+            if len(cur) == 0:
+                cur = [act]
+                if size_bytes(cur) > MAX_BODY_BYTES:
+                    raise RuntimeError("Single MJAI event too large (>4096 bytes).")
+                continue
+
+            trial = cur + [act]
+            if size_bytes(trial) <= MAX_BODY_BYTES:
+                cur = trial
+            else:
+                chunks.append(cur)
+                cur = [act]
+                if size_bytes(cur) > MAX_BODY_BYTES:
+                    raise RuntimeError("Single MJAI event too large (>4096 bytes).")
+
+        if len(cur) > 0:
+            chunks.append(cur)
+
+        # Send chunks sequentially; only last chunk can act
         reaction = None
-        for (i, start) in enumerate(range(0, len(input_list), BotMjapi.batch_size)):
-            reaction = self._react_batch_impl(
-                input_list[start:start + BotMjapi.batch_size],
-                can_act= i + 1 == num_batches)
-        return reaction
+        for i, chunk in enumerate(chunks):
+            is_last = (i == len(chunks) - 1)
+            if not is_last:
+                last = chunk[-1]
+                last_data = last['data'].copy()
+                last_data['can_act'] = False
+                chunk = chunk[:-1] + [{'seq': last['seq'], 'data': last_data}]
+
+            err = None
+            for _ in range(BotMjapi.retries):
+                try:
+                    reaction = self.mjapi.batch(chunk)
+                    err = None
+                    break
+                except Exception as e:
+                    err = e
+                    time.sleep(BotMjapi.retry_interval)
+            if err:
+                raise err
+
+        return self._process_reaction(reaction, True)
+
 
     def _react_batch_impl(self, input_list, can_act):
         if len(input_list) == 0:
