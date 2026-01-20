@@ -1,6 +1,8 @@
 """ Bot for mjapi"""
 
 import time
+import atexit
+
 from common.settings import Settings
 from common.log_helper import LOGGER
 from common.utils import random_str
@@ -26,6 +28,8 @@ class BotMjapi(Bot):
         self._login_or_reg()
         self.id = -1
         self.ignore_next_turn_self_reach:bool = False
+
+        atexit.register(self._cleanup)
         
     @property
     def info_str(self):
@@ -36,11 +40,31 @@ class BotMjapi(Bot):
         # - account: /user/login (optionally /user/register if secret empty)
         # - trial:   /user/trial with body {'code': ...}
         if getattr(self.st, 'mjapi_auth_mode', 'account') == 'trial':
-            token = self.mjapi.trial_login(self.st.mjapi_trial_code)
-            # persist token (optional, but helps if the program exits unexpectedly)
-            self.st.mjapi_token = token
-            self.st.save_json()
-        else:
+            if not self.st.mjapi_trial_code:
+                raise RuntimeError("Trial mode selected but trial code is empty")
+
+            # Try reuse cached token (prevents 'another session active with same ip')
+            if getattr(self.st, 'mjapi_token', None):
+                LOGGER.debug("Trying cached trial token")
+                self.mjapi.set_bearer_token(self.st.mjapi_token)
+                try:
+                    # validate token: /mjai/list requires Authorization
+                    _ = self.mjapi.list_models()
+                    LOGGER.info("Cached trial token is valid, reuse it")
+                except Exception as e:
+                    LOGGER.warning("Cached trial token invalid (%s), requesting a new one", e)
+                    self.st.mjapi_token = None
+                    self.st.save_json()
+                    self.mjapi.token = None
+                    self.mjapi.headers.pop('Authorization', None)
+
+            # If no valid token, request a new trial session
+            if not self.mjapi.token:
+                token = self.mjapi.trial_login(self.st.mjapi_trial_code)
+                self.st.mjapi_token = token
+                self.st.save_json()
+
+            else:
             if not self.st.mjapi_user:
                 self.st.mjapi_user = random_str(6)
                 LOGGER.info("Created  random mjapi username:%s", self.st.mjapi_user)
@@ -73,13 +97,37 @@ class BotMjapi(Bot):
         LOGGER.info("Login to MJAPI successful with user: %s, model_name=%s", self.st.mjapi_user, self.model_name)
 
     def __del__(self):
-        LOGGER.debug("Deleting bot %s", self.name)
-        if self.initialized:
-            self.mjapi.stop_bot()
-        if self.mjapi.token:    # update usage and logout on deleting
-            self.st.mjapi_usage = self.mjapi.get_usage()
-            self.st.save_json()
-            self.mjapi.logout()
+        try:
+            self._cleanup()
+        except Exception:
+            pass
+            
+    def _cleanup(self):
+        LOGGER.debug("Cleaning up bot %s", self.name)
+        try:
+            if self.initialized:
+                self.mjapi.stop_bot()
+        except Exception:
+            pass
+
+        try:
+            if self.mjapi.token:
+                # update usage and logout
+                try:
+                    self.st.mjapi_usage = self.mjapi.get_usage()
+                    self.st.save_json()
+                except Exception:
+                    pass
+
+                try:
+                    self.mjapi.logout()
+                    if getattr(self.st, 'mjapi_auth_mode', 'account') == 'trial':
+                        self.st.mjapi_token = None
+                        self.st.save_json()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _init_bot_impl(self, _mode:GameMode=GameMode.MJ4P):
         self.mjapi.start_bot(self.seat, BotMjapi.bound, self.model_name)
