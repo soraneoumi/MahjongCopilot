@@ -1,0 +1,36 @@
+name: build-windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create venv + install deps
+        shell: cmd
+        run: |
+          python -m venv .venv
+          call .venv\Scripts\activate.bat
+          pip install -r requirements.txt
+          set PLAYWRIGHT_BROWSERS_PATH=0
+          python -m playwright install chromium
+
+      - name: Build
+        shell: cmd
+        run: |
+          call .venv\Scripts\activate.bat
+          scripts\generate_exe.bat
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MahjongCopilot-windows
+          path: dist/**
