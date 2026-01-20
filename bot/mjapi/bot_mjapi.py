@@ -64,7 +64,7 @@ class BotMjapi(Bot):
                 self.st.mjapi_token = token
                 self.st.save_json()
 
-            else:
+        else:
             if not self.st.mjapi_user:
                 self.st.mjapi_user = random_str(6)
                 LOGGER.info("Created  random mjapi username:%s", self.st.mjapi_user)
