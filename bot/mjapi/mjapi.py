@@ -4,6 +4,9 @@ API 文档: https://pastebin.com/wks80EsZ
 把文档内容粘贴到测试网址: https://editor.swagger.io/"""
 
 import requests
+import json
+
+MAX_BODY_BYTES = 4096
 
 class MjapiClient:
     """ MJAPI API wrapper"""
@@ -137,21 +140,45 @@ class MjapiClient:
         return self._post_act(path, seq, actions)
 
     def _post_act(self, path, _seq, actions):
-        # post request to MJAPI and process response/errors
-        response = requests.post(self.base_url + path, json=actions, headers=self.headers, timeout=self.timeout)
-        if response.content:
-            response_json = response.json()
-            if response.status_code == 200:
-                if 'act' in response_json:
-                    # assume seq is correct
-                    return response_json['act']
-            elif 'error' in response_json:
-                return response_json
-            else:
-                raise ValueError(f"status code {response.status_code}; {response.text}")
-        elif response.status_code != 200:
-            raise ValueError(f"status code {response.status_code}")
-        return None
+        body = json.dumps(actions, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+        if len(body) > MAX_BODY_BYTES:
+            raise RuntimeError(f"Request body too large: {len(body)} bytes > {MAX_BODY_BYTES}")
+
+        headers = dict(self.headers)
+        headers["Content-Type"] = "application/json"
+
+        response = requests.post(
+            self.base_url + path,
+            data=body,
+            headers=headers,
+            timeout=self.timeout
+        )
+
+        if response.status_code != 200:
+            err_detail = None
+            try:
+                j = response.json()
+                if isinstance(j, dict) and "error" in j:
+                    err_detail = j["error"]
+                else:
+                    err_detail = j
+            except Exception:
+                txt = (response.text or "").strip()
+                err_detail = txt[:500] if txt else "<empty response body>"
+
+            raise RuntimeError(f"HTTP {response.status_code}: {err_detail}")
+
+        if not response.content:
+            return None
+
+        response_json = response.json()
+        if "act" in response_json:
+            return response_json["act"]
+        if "error" in response_json:
+            return response_json
+
+        raise RuntimeError(f"Unexpected response JSON: {response_json}")
 
     def stop_bot(self):
         """Stop the mjai bot."""
