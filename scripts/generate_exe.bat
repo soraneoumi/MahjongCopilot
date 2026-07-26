@@ -21,9 +21,5 @@ mkdir dist\MahjongCopilot\models
 mkdir dist\MahjongCopilot\chrome_ext
 robocopy . .\dist\MahjongCopilot version
 robocopy .venv\Lib\site-packages\playwright\driver\package\.local-browsers dist\MahjongCopilot\_internal\playwright\driver\package\.local-browsers /E
-explorer.exe dist
-
-REM make 7z archive 
-cd dist
-"C:\Program Files\7-Zip\7z.exe" a -t7z MahjongCopilot.windows.7z MahjongCopilot
-cd..
+if errorlevel 8 exit /b %errorlevel%
+exit /b 0

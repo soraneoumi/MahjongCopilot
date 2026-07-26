@@ -20,8 +20,6 @@ jobs:
           python -m venv .venv
           call .venv\Scripts\activate.bat
           pip install -r requirements.txt
-          set PLAYWRIGHT_BROWSERS_PATH=0
-          python -m playwright install chromium
 
       - name: Build
         shell: cmd
@@ -33,4 +31,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: MahjongCopilot-windows
-          path: dist/**
+          path: dist/MahjongCopilot/
