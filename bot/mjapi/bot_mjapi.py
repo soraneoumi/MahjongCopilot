@@ -18,7 +18,7 @@ class BotMjapi(Bot):
     batch_size = 24
     retries = 3
     retry_interval = 1
-    bound = 256
+    bound = 0
 
     """ MJAPI based mjai bot"""
     def __init__(self, setting:Settings) -> None:
@@ -132,7 +132,14 @@ class BotMjapi(Bot):
 
     def _init_bot_impl(self, _mode:GameMode=GameMode.MJ4P):
         self.mjapi.start_bot(self.seat, BotMjapi.bound, self.model_name)
-        self.id = -1
+        self.id = 0 if BotMjapi.bound == 0 else -1
+
+    def _next_id(self):
+        if BotMjapi.bound == 0:
+            self.id += 1
+        else:
+            self.id = (self.id + 1) % BotMjapi.bound
+        return self.id
 
     def _process_reaction(self, reaction, recurse):
         if reaction:
@@ -151,7 +158,6 @@ class BotMjapi(Bot):
         return reaction
 
     def react(self, input_msg:dict, recurse=True) -> dict | None:
-        # input_msg['can_act'] = True
         msg_type = input_msg['type']
         if self.ignore_next_turn_self_reach:
             if  msg_type == MjaiType.REACH and input_msg['actor'] == self.seat:
@@ -161,11 +167,13 @@ class BotMjapi(Bot):
 
         old_id = self.id
         err = None
-        self.id = (self.id + 1) % BotMjapi.bound
+        self._next_id()
+        action = input_msg.copy()
+        action.setdefault('can_act', True)
         reaction = None
         for _ in range(BotMjapi.retries):
             try:
-                reaction = self.mjapi.act(self.id, input_msg)
+                reaction = self.mjapi.act(self.id, action)
                 err = None
                 break
             except Exception as e:
@@ -188,9 +196,14 @@ class BotMjapi(Bot):
 
         # Build actions with seq (keep original seq behavior)
         actions_all: list[dict] = []
-        for msg in input_list:
-            self.id = (self.id + 1) % BotMjapi.bound
-            actions_all.append({'seq': self.id, 'data': msg})
+        for i, msg in enumerate(input_list):
+            self._next_id()
+            data = msg.copy()
+            if i + 1 == len(input_list):
+                data.setdefault('can_act', True)
+            else:
+                data['can_act'] = False
+            actions_all.append({'seq': self.id, 'data': data})
 
         # Split into chunks by actual JSON byte length (<= 4096)
         MAX_BODY_BYTES = 4096
@@ -229,16 +242,9 @@ class BotMjapi(Bot):
         if len(cur) > 0:
             chunks.append(cur)
 
-        # Send chunks sequentially; only last chunk can act
+        # Send chunks sequentially; only the final event may act
         reaction = None
-        for i, chunk in enumerate(chunks):
-            is_last = (i == len(chunks) - 1)
-            if not is_last:
-                last = chunk[-1]
-                last_data = last['data'].copy()
-                last_data['can_act'] = False
-                chunk = chunk[:-1] + [{'seq': last['seq'], 'data': last_data}]
-
+        for chunk in chunks:
             err = None
             for _ in range(BotMjapi.retries):
                 try:
@@ -262,9 +268,11 @@ class BotMjapi(Bot):
         old_id = self.id
         err = None
         for (i, msg) in enumerate(input_list):
-            self.id = (self.id + 1) % BotMjapi.bound
-            if i + 1 == len(input_list) and not can_act:
-                msg = msg.copy()
+            self._next_id()
+            msg = msg.copy()
+            if i + 1 == len(input_list) and can_act:
+                msg.setdefault('can_act', True)
+            else:
                 msg['can_act'] = False
             action = {'seq': self.id, 'data': msg}
             batch_data.append(action)

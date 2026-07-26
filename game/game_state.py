@@ -263,7 +263,8 @@ class GameState:
         self.mjai_pending_input_msgs.append(
             {
                 'type': MjaiType.START_GAME,
-                'id': self.seat
+                'id': self.seat,
+                'can_act': False
             }
         )        
         self._react_all()
